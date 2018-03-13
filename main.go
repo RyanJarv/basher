@@ -8,9 +8,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"reflect"
-
-	"database/sql"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mvdan/sh/syntax"
@@ -61,7 +60,10 @@ func getCommands(node syntax.Node) bool {
 		p := node.(*syntax.CallExpr).Args[0].Parts[0]
 		r := reflect.ValueOf(p)
 		v := reflect.Indirect(r).FieldByName("Value")
-		cmds <- v
+		if v.IsValid() == false {
+			log.Fatal("invalid value")
+		}
+		cmds <- v.String()
 	}
 	return true
 }
@@ -73,25 +75,37 @@ func findPrograms(cmds chan string) {
 	}
 	defer db.Close()
 
-	for cmd := range <-cmds {
-		sqlStmt := fmt.Sprintf(`select p.name from packages as p join commands as c on p.pkgID = c.pkgID where c.command = "%s";`, cmd)
-		rows, err = db.Query(sqlStmt)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id int
-			var name string
-			err = rows.Scan(&id, &name)
+	for {
+		select {
+		case cmd := <-cmds:
+			typeCmd := exec.Command("bash", "-c", fmt.Sprintf("type %s", cmd))
+			err := typeCmd.Run()
+			if err == nil {
+				fmt.Printf("\u2713 %s\n", cmd)
+				if err != nil {
+					log.Fatal(err)
+				}
+				continue
+			}
+
+			sqlStmt := fmt.Sprintf(`select p.name from packages as p join commands as c on p.pkgID = c.pkgID where c.command = "%s" limit 10;`, cmd)
+			rows, err := db.Query(sqlStmt)
 			if err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println(id, name)
-		}
-		err = rows.Err()
-		if err != nil {
-			log.Fatal(err)
+			defer rows.Close()
+			for rows.Next() {
+				var name string
+				err = rows.Scan(&name)
+				if err != nil {
+					log.Fatal(err)
+				}
+				fmt.Printf("\u2717 %s\n", name)
+			}
+			err = rows.Err()
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 }

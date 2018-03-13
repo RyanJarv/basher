@@ -8,7 +8,7 @@ ENV PATH /go/bin/:${PATH}
 
 RUN apt-get update 
 RUN apt-get install -y golang jq command-not-found sqlite3
-RUN apt-get install -y golang-github-mattn-go-sqlite3-dev
+RUN apt-get install -y vim locate && updatedb
 #RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
 #COPY main.go /go/src/github.com/RyanJarv/dockersnitch 
